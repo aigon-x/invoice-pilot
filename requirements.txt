@@ -1,5 +1,9 @@
 # Runtime: Python 3.11+ standard library only (urllib, json, decimal, unittest).
-# No third-party runtime dependencies.
+# The invoice core and CLI have no third-party runtime dependencies.
+# Optional web layer (web/server.py):
+fastapi>=0.110
+uvicorn>=0.29
 #
 # Development / tests:
 pytest>=8
+httpx>=0.27

@@ -175,3 +175,68 @@ $ python3 -m invoicepilot --offline --store /tmp/ppstate2 webhook --file /tmp/wb
 ```
 
 Sandbox PayPal nie był wywołany — brak `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET`.
+
+## Warstwa webowa — UI/UX (2026-10-20)
+
+`web/server.py` (FastAPI) + `web/index.html` (jeden plik, zero zależności JS)
++ `tests/test_web.py`. Przeglądarka nie rozmawia z PayPal: każdy request idzie
+przez ten sam deterministyczny mock co `--offline`, a stan trafia do
+`state/web/` (osobno od CLI). Klient PayPal i parser pozostały nietknięte.
+
+Endpointy:
+
+| Metoda | Ścieżka | Zachowanie |
+|---|---|---|
+| GET | `/` | `web/index.html` — ciemny interfejs, akcent `#4c82d9` |
+| POST | `/api/invoice` | `{"text": "..."}` → parsowanie, mock PayPal, status `SENT`; zwraca `id`, `number`, `total`, `currency`, `status`, `items`, `ai_mode` |
+| POST | `/api/webhook` | symuluje `INVOICING.INVOICE.PAID` z nagłówkiem `offline-valid`; zwraca nowy status |
+| GET | `/api/health` | `status`, `mode=offline`, liczba faktur w store |
+
+Testy (cały projekt):
+
+```
+$ python3 -m pytest -q -p no:warnings
+51 passed in 2.71s
+```
+
+Siedem testów web: index 200 + treść UI, health, invoice → `SENT`
+(total `2790.00 EUR`, 2 pozycje, `RULE-BASED`), webhook → `PAID`,
+webhook bez id → najnowsza faktura, zły tekst → 400 z listą problemów
+parsera i bez zapisu do store, nieznana faktura w webhooku → 404.
+
+Smoke na żywo (uvicorn `127.0.0.1:8017`, stan w katalogu tymczasowym):
+
+```
+GET  /              -> 200, 18 727 B
+GET  /api/health    -> {"status":"ok","mode":"offline","version":"1.0.0","invoices":0,...}
+POST /api/invoice   -> id=INV2-9F6F8571E594 number=INV-20261020-2954 total=2790.00
+                       currency=EUR status=SENT items=2 ai_mode=RULE-BASED
+POST /api/webhook   -> {"id":"INV2-9F6F8571E594","status":"PAID","verified":true,"applied":true}
+POST /api/invoice   -> 400 {"detail":{"error":"order text could not be parsed","problems":[...]}}
+```
+
+UI pokazuje: textarea na zlecenie, „Create invoice”, stan pusty („No invoice
+yet”), stan ładowania (spinner + komunikat w `aria-live`), stan błędu
+(`role="alert"`, lista problemów), kartę faktury (numer, kwota, status pill),
+tabelę pozycji oraz „Simulate payment”, który po zdarzeniu zmienia pill na
+`PAID` i blokuje przycisk. Dodatkowo: `aria-live="polite"`, focus przenoszony
+na błąd, `prefers-reduced-motion`, responsywność (375 px zweryfikowane), favicon inline
+(data URI), obsługa Ctrl/⌘+Enter.
+
+Uruchomienie: `python3 -m uvicorn web.server:app --port 8017`
+(wymaga `fastapi` i `uvicorn`; testy wymagają `httpx`).
+
+Render zweryfikowany headless Chromium (Playwright, viewport 1280×900 i 375×812,
+tylko `127.0.0.1`, zero egressu): stan pusty widoczny przed akcją, po
+„Create invoice” karta pokazuje `SENT`, 2 wiersze i kwotę `2790.00 EUR`;
+„Simulate payment” zmienia pill na `PAID` i blokuje przycisk; zły tekst
+pokazuje `role="alert"` z trzema problemami parsera i ukrywa kartę faktury.
+`page_errors` = 0; jedyny wpis w konsoli to oczekiwane 400 z testu
+negatywnego. Widok 375 px nie ma poziomego przewijania (kolumna „Unit”
+ukryta na telefonie). Bramka MCP `browser-render` była niedostępna
+(`TOR_DOWN`), więc render wykonano lokalnie bez proxy — bez żadnego
+połączenia zewnętrznego.
+
+Ograniczenia: brak autoryzacji i wielodostępności (demo), stan lokalny
+(JSON), brak SSE/websocketów — status zmienia odpowiedź HTTP, webhook jest
+symulowany z jawnym nagłówkiem `offline-valid`, a nie podpisany przez PayPal.

@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="InvoicePilot — turn a messy order note into a PayPal invoice, offline.">
+<title>InvoicePilot — invoice from a note</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2305070a'/%3E%3Crect x='10' y='13' width='44' height='38' rx='6' fill='%234c82d9'/%3E%3Cpath d='M20 26h24M20 34h15' stroke='%2305070a' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #05070a;
+    --panel: #12161c;
+    --panel-2: #171d25;
+    --line: #252d38;
+    --text: #e9ecf0;
+    --muted: #98a2b3;
+    --accent: #4c82d9;
+    --accent-2: #6f9ff0;
+    --ok: #3fb98a;
+    --err: #e05668;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  [hidden] { display: none !important; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 480px at 80% -10%, rgba(76, 130, 217, .16), transparent 65%),
+      radial-gradient(700px 420px at 0% 0%, rgba(76, 130, 217, .07), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, p { margin: 0; }
+
+  button, textarea { font: inherit; color: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  .shell {
+    width: min(1040px, 100%);
+    margin: 0 auto;
+    padding: clamp(24px, 5vw, 64px) clamp(16px, 4vw, 32px) 48px;
+    display: grid;
+    gap: clamp(16px, 2.4vw, 24px);
+  }
+
+  .shell > * { min-width: 0; }
+
+  .hero { display: grid; gap: 12px; max-width: 66ch; }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: .82rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 4px rgba(63, 185, 138, .14);
+  }
+
+  h1 {
+    font-size: clamp(1.9rem, 4.6vw, 3rem);
+    line-height: 1.12;
+    letter-spacing: -.02em;
+    font-weight: 650;
+  }
+
+  .lede { color: var(--muted); font-size: clamp(.98rem, 1.4vw, 1.08rem); max-width: 60ch; }
+
+  .panel {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: clamp(16px, 2.6vw, 26px);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .32);
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .panel-head h2 { font-size: 1rem; font-weight: 600; letter-spacing: .01em; }
+
+  .hint { color: var(--muted); font-size: .8rem; font-family: var(--mono); }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .skip {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    padding: 10px 14px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    z-index: 10;
+    text-decoration: none;
+  }
+
+  .skip:focus { top: 12px; }
+
+  textarea {
+    width: 100%;
+    min-height: 190px;
+    resize: vertical;
+    padding: 16px;
+    background: #0b0f15;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: .9rem;
+    line-height: 1.65;
+    tab-size: 2;
+    transition: border-color .16s ease, box-shadow .16s ease;
+  }
+
+  textarea::placeholder { color: #6b7686; }
+
+  textarea:hover { border-color: #303a47; }
+
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(76, 130, 217, .16);
+  }
+
+  .composer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #1b222c;
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .16s ease, border-color .16s ease, transform .16s ease;
+  }
+
+  .btn:hover { background: #222b37; border-color: #33404f; }
+  .btn:active { transform: translateY(1px); }
+
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .btn.primary:hover { background: #5a8fe4; border-color: #5a8fe4; }
+
+  .btn.ghost { background: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--text); }
+
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+    transform: none;
+  }
+
+  .spinner {
+    display: none;
+    width: 15px;
+    height: 15px;
+    border: 2px solid rgba(255, 255, 255, .35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+
+  .is-busy .spinner { display: inline-block; }
+  .is-busy { cursor: progress; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status {
+    min-height: 1.4em;
+    color: var(--muted);
+    font-size: .9rem;
+  }
+
+  .empty {
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    text-align: center;
+    color: var(--muted);
+    border-style: dashed;
+    padding: clamp(28px, 6vw, 52px);
+  }
+
+  .empty-mark { font-size: 1.6rem; color: #3a4553; }
+
+  .error { border-color: rgba(224, 86, 104, .45); background: linear-gradient(180deg, #1c1519, #161216); }
+  .error h2 { color: #ffb3bc; font-size: 1rem; margin-bottom: 6px; }
+  .error ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: .9rem; }
+  .error li + li { margin-top: 4px; }
+
+  .invoice-top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .label {
+    color: var(--muted);
+    font-size: .74rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+
+  #invoice-title {
+    font-family: var(--mono);
+    font-size: clamp(1.2rem, 2.4vw, 1.55rem);
+    font-weight: 600;
+    margin-top: 4px;
+    word-break: break-word;
+  }
+
+  .muted { color: var(--muted); font-size: .86rem; }
+
+  .amount { text-align: right; display: grid; justify-items: end; gap: 6px; }
+
+  .amount-value {
+    font-family: var(--mono);
+    font-size: clamp(1.6rem, 3.4vw, 2.1rem);
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+
+  .amount-value #invoice-currency { color: var(--muted); font-size: .55em; margin-left: 4px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    border: 1px solid #344050;
+    background: #1c232d;
+    color: var(--muted);
+    font-size: .76rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+  }
+
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .pill[data-status="SENT"] { color: var(--accent-2); border-color: rgba(76, 130, 217, .5); background: rgba(76, 130, 217, .12); }
+  .pill[data-status="PAID"] { color: var(--ok); border-color: rgba(63, 185, 138, .5); background: rgba(63, 185, 138, .12); }
+  .pill[data-status="DRAFT"] { color: var(--muted); }
+
+  .table-wrap { overflow-x: auto; margin: 4px -4px 0; padding: 0 4px; }
+
+  table { width: 100%; border-collapse: collapse; min-width: 480px; }
+
+  th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--line); font-size: .9rem; }
+  th { color: var(--muted); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .warn { margin-top: 12px; color: #e3c07a; font-size: .84rem; }
+
+  .invoice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+
+  footer { color: #65707f; font-size: .8rem; text-align: center; padding-top: 8px; }
+
+  @media (max-width: 560px) {
+    .amount { text-align: left; justify-items: start; width: 100%; }
+    .composer-actions .btn { flex: 1 1 auto; }
+    .hint { display: none; }
+    table { min-width: 0; }
+    th, td { padding: 10px 4px; font-size: .86rem; }
+    th:nth-child(3), td:nth-child(3) { display: none; }
+    #invoice-title { font-size: 1.05rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#order">Skip to the order note</a>
+<main class="shell">
+  <header class="hero">
+    <p class="eyebrow"><span class="dot" aria-hidden="true"></span> InvoicePilot · offline demo</p>
+    <h1>From a messy note to a PayPal invoice.</h1>
+    <p class="lede">Paste the deal as you wrote it. The deterministic parser turns it into line items;
+       the invoice is created against the local mock of PayPal Invoicing — no network, no credentials.</p>
+  </header>
+
+  <section class="panel composer" aria-labelledby="composer-title">
+    <div class="panel-head">
+      <h2 id="composer-title">Order note</h2>
+      <span class="hint">Ctrl / ⌘ + Enter</span>
+    </div>
+    <label class="sr-only" for="order">Order text</label>
+    <textarea id="order" spellcheck="false" placeholder="Client: Acme Sp. z o.o. <billing@acme.example>
+Currency: EUR
+Due: 2026-11-05
+- 3 x Implementation workshop @ 450.00
+- 12h Development @ 120.00 EUR/h"></textarea>
+    <div class="composer-actions">
+      <button id="create" class="btn primary" type="button">
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="btn-label">Create invoice</span>
+      </button>
+      <button id="sample" class="btn ghost" type="button">Use sample</button>
+    </div>
+  </section>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <section id="empty" class="panel empty" aria-label="Empty state">
+    <p class="empty-mark" aria-hidden="true">◫</p>
+    <p>No invoice yet. Paste an order note above and create one — the card appears here.</p>
+  </section>
+
+  <section id="error" class="panel error" role="alert" tabindex="-1" hidden>
+    <h2>Could not create the invoice</h2>
+    <p id="error-text"></p>
+    <ul id="error-list"></ul>
+  </section>
+
+  <section id="invoice" class="panel invoice" aria-labelledby="invoice-title" hidden>
+    <div class="invoice-top">
+      <div>
+        <p class="label">Invoice</p>
+        <h2 id="invoice-title">—</h2>
+        <p class="muted" id="invoice-meta"></p>
+      </div>
+      <div class="amount">
+        <p class="label">Amount due</p>
+        <p class="amount-value"><span id="invoice-total">—</span><span id="invoice-currency"></span></p>
+        <span id="status-pill" class="pill" data-status="DRAFT">—</span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption class="sr-only">Invoice line items</caption>
+        <thead>
+          <tr><th scope="col">Description</th><th scope="col" class="num">Qty</th>
+              <th scope="col" class="num">Unit</th><th scope="col" class="num">Amount</th></tr>
+        </thead>
+        <tbody id="items"></tbody>
+      </table>
+    </div>
+    <p id="warnings" class="warn" hidden></p>
+    <div class="invoice-actions">
+      <button id="pay" class="btn" type="button">Simulate payment</button>
+      <span class="muted" id="pay-note">Posts INVOICING.INVOICE.PAID with the offline-valid signature.</span>
+    </div>
+  </section>
+
+  <footer>InvoicePilot · deterministic parser · mock PayPal Invoicing · state in <code>state/web/</code></footer>
+</main>
+<script>
+  (() => {
+    "use strict";
+    const SAMPLE = [
+      "Client: Acme Sp. z o.o. <billing@acme.example>",
+      "Currency: EUR",
+      "Due: 2026-11-05",
+      "- 3 x Implementation workshop @ 450.00",
+      "- 12h Development @ 120.00 EUR/h",
+    ].join("\n");
+
+    const els = {
+      order: document.getElementById("order"),
+      create: document.getElementById("create"),
+      sample: document.getElementById("sample"),
+      status: document.getElementById("status"),
+      empty: document.getElementById("empty"),
+      error: document.getElementById("error"),
+      errorText: document.getElementById("error-text"),
+      errorList: document.getElementById("error-list"),
+      invoice: document.getElementById("invoice"),
+      title: document.getElementById("invoice-title"),
+      meta: document.getElementById("invoice-meta"),
+      total: document.getElementById("invoice-total"),
+      currency: document.getElementById("invoice-currency"),
+      pill: document.getElementById("status-pill"),
+      items: document.getElementById("items"),
+      warnings: document.getElementById("warnings"),
+      pay: document.getElementById("pay"),
+      payNote: document.getElementById("pay-note"),
+    };
+
+    const view = { invoice: null, busy: false };
+
+    function setBusy(busy, label) {
+      view.busy = busy;
+      els.create.disabled = busy;
+      els.create.classList.toggle("is-busy", busy);
+      els.invoice.setAttribute("aria-busy", String(busy));
+      els.pay.disabled = busy || !view.invoice || view.invoice.status === "PAID";
+      if (label) els.status.textContent = label;
+    }
+
+    function showError(message, problems = []) {
+      els.error.hidden = false;
+      els.invoice.hidden = true;
+      els.empty.hidden = true;
+      els.errorText.textContent = message;
+      els.errorList.replaceChildren(...problems.map((problem) => {
+        const item = document.createElement("li");
+        item.textContent = problem;
+        return item;
+      }));
+      els.errorList.hidden = problems.length === 0;
+      els.status.textContent = "";
+      els.error.focus();
+    }
+
+    function clearError() {
+      els.error.hidden = true;
+      els.errorList.replaceChildren();
+    }
+
+    function renderInvoice(data) {
+      clearError();
+      view.invoice = data;
+      els.empty.hidden = true;
+      els.invoice.hidden = false;
+      els.title.textContent = data.number || data.id;
+      els.meta.textContent = [data.buyer, `due ${data.due_date}`, `extraction ${data.ai_mode}`]
+        .filter(Boolean).join(" · ");
+      els.total.textContent = data.total;
+      els.currency.textContent = ` ${data.currency}`;
+      els.pill.textContent = data.status;
+      els.pill.dataset.status = data.status;
+      els.items.replaceChildren(...data.items.map((item) => {
+        const row = document.createElement("tr");
+        const cells = [
+          [item.description, ""],
+          [item.quantity, "num"],
+          [`${item.unit_amount} ${data.currency}`, "num"],
+          [`${item.amount} ${data.currency}`, "num"],
+        ];
+        for (const [value, className] of cells) {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          if (className) cell.className = className;
+          row.append(cell);
+        }
+        return row;
+      }));
+      const notes = (data.warnings || []).map((warning) => `Note: ${warning}`);
+      els.warnings.textContent = notes.join(" ");
+      els.warnings.hidden = notes.length === 0;
+      els.pay.disabled = data.status === "PAID";
+      els.pay.textContent = data.status === "PAID" ? "Paid" : "Simulate payment";
+      els.payNote.textContent = data.status === "PAID"
+        ? `Paid — ${data.id} is settled in the offline store.`
+        : "Posts INVOICING.INVOICE.PAID with the offline-valid signature.";
+      els.status.textContent = `Invoice ${data.number} created — status ${data.status}.`;
+    }
+
+    async function request(url, body) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = payload.detail || {};
+        const error = new Error(detail.error || `Request failed (HTTP ${response.status}).`);
+        error.problems = detail.problems || [];
+        throw error;
+      }
+      return payload;
+    }
+
+    async function createInvoice() {
+      const text = els.order.value.trim();
+      if (!text) {
+        showError("Paste an order note first.",
+          ["Client: <name>", "Currency: EUR", "- 1 x Service @ 100.00"]);
+        els.order.focus();
+        return;
+      }
+      clearError();
+      setBusy(true, "Reading the note and creating the invoice…");
+      try {
+        renderInvoice(await request("/api/invoice", { text }));
+      } catch (error) {
+        showError(error.message, error.problems);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function markPaid(payload) {
+      view.invoice = { ...view.invoice, status: payload.status };
+      els.pill.textContent = payload.status;
+      els.pill.dataset.status = payload.status;
+      els.pay.disabled = payload.status === "PAID";
+      els.pay.textContent = payload.status === "PAID" ? "Paid" : "Simulate payment";
+      els.payNote.textContent = payload.status === "PAID"
+        ? `Paid — ${payload.id} is settled in the offline store.`
+        : `Event ${payload.event_type} applied — status ${payload.status}.`;
+      els.status.textContent = `Payment received — status ${payload.status}.`;
+    }
+
+    async function simulatePayment() {
+      if (!view.invoice || view.busy) return;
+      setBusy(true, "Waiting for the payment event…");
+      try {
+        markPaid(await request("/api/webhook", { invoice_id: view.invoice.id }));
+      } catch (error) {
+        showError(error.message, error.problems);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    els.create.addEventListener("click", createInvoice);
+    els.pay.addEventListener("click", simulatePayment);
+    els.sample.addEventListener("click", () => {
+      els.order.value = SAMPLE;
+      els.order.focus();
+      els.status.textContent = "Sample note loaded — press Create invoice.";
+    });
+    els.order.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        createInvoice();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
+
