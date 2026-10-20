@@ -16,11 +16,13 @@ from .errors import (
     InvoicePilotError,
     OrderParseError,
 )
+from .ai import AiExtractor
 from .models import format_amount
 from .parser import parse_order_with_warnings
 from .paypal import MODE_OFFLINE, PayPalClient
 from .reminders import ReminderAgent
 from .store import Store, invoice_record
+from .webhook import process_event
 from .transport import MockTransport
 
 DEFAULT_STATE_DIR = "state"
@@ -97,6 +99,8 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--issue-date", help="data wystawienia YYYY-MM-DD (domy\u015blnie dzi\u015b)")
     create.add_argument("--due-days", type=int, default=14, help="termin p\u0142atno\u015bci w dniach (domy\u015blnie 14)")
     create.add_argument("--no-send", action="store_true", help="utw\u00f3rz szkic bez wysy\u0142ki")
+    create.add_argument("--ai", action="store_true",
+                        help="wymu\u015b ekstrakcj\u0119 LLM (wymaga PAYPAL_AI_BASE_URL i PAYPAL_AI_API_KEY)")
     create.set_defaults(func=cmd_create)
 
     status = invoice_sub.add_parser("status", help="status faktury z lokalnego store (i z API w live)")
@@ -111,11 +115,25 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true", help="tylko plan i log decyzji (domy\u015blne)")
     mode.add_argument("--execute", action="store_true", help="realnie wysy\u0142aj przypomnienia")
     remind.set_defaults(func=cmd_remind)
+
+    hook = subparsers.add_parser("webhook", help="obs\u0142u\u017c zdarzenie webhooka PayPal")
+    hook.add_argument("--file", required=True, help="plik JSON z eventem")
+    hook.add_argument("--headers", help="plik JSON z nag\u0142\u00f3wkami PayPal-*")
+    hook.add_argument("--offline", action="store_true", default=argparse.SUPPRESS,
+                      help="mock transportu, zero sieci (globalna flaga te\u017c dzia\u0142a)")
+    hook.set_defaults(func=cmd_webhook)
     return parser
 
 
 def cmd_create(args: argparse.Namespace) -> int:
     text = read_text(args)
+    extractor = AiExtractor()
+    ai_mode = "RULE-BASED"
+    if getattr(args, "ai", False) or extractor.available:
+        extraction = extractor.extract(text)
+        ai_mode = extraction.mode
+        if extraction.mode == "LLM":
+            text = extraction.to_grammar()
     issue = date.fromisoformat(args.issue_date) if args.issue_date else date.today()
     invoice, warnings = parse_order_with_warnings(text, issue_date=issue, default_due_days=args.due_days)
     store = Store(args.store)
@@ -134,13 +152,14 @@ def cmd_create(args: argparse.Namespace) -> int:
     record["number"] = invoice.number
     store.upsert(record)
 
-    payload = {"mode": client.mode, "invoice": record, "warnings": warnings, "banner": banner(client)}
+    payload = {"mode": client.mode, "ai_mode": ai_mode, "invoice": record,
+               "warnings": warnings, "banner": banner(client)}
     human = [
         banner(client),
         f"invoice: id={record['id']} number={record['number']} total={record['total']} {invoice.currency}",
         f"buyer: {invoice.buyer.name}" + (f" <{invoice.buyer.email}>" if invoice.buyer.email else ""),
         f"due: {invoice.due_date.isoformat()} | items: {len(invoice.items)} | status: {record['status']}",
-        f"request-id: {invoice.request_id}",
+        f"request-id: {invoice.request_id} | ai: {ai_mode}",
     ]
     human.extend(f"WARN: {warning}" for warning in warnings)
     human.append(f"store: {store.invoices_path}")
@@ -302,3 +321,17 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def cmd_webhook(args: argparse.Namespace) -> int:
+    with open(args.file, encoding="utf-8") as fh:
+        event = json.load(fh)
+    headers = {}
+    if args.headers:
+        with open(args.headers, encoding="utf-8") as fh:
+            headers = {str(k).lower(): str(v) for k, v in json.load(fh).items()}
+    store = Store(args.store)
+    client = make_client(args, store)
+    result = process_event(event, headers, client, store)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result["verified"] else 4

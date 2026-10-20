@@ -231,6 +231,26 @@ class PayPalClient:
                 f"remind_invoice failed (HTTP {response.status}): {message}", response.status, issue
             )
 
+    def verify_webhook_signature(self, headers: dict[str, str], event: dict[str, Any]) -> bool:
+        """Verify a webhook with PayPal. Offline accepts only the explicit test signature."""
+        if self.offline:
+            return headers.get("paypal-transmission-sig") == "offline-valid"
+        body = {
+            "auth_algo": headers.get("paypal-auth-algo", ""),
+            "cert_url": headers.get("paypal-cert-url", ""),
+            "transmission_id": headers.get("paypal-transmission-id", ""),
+            "transmission_sig": headers.get("paypal-transmission-sig", ""),
+            "transmission_time": headers.get("paypal-transmission-time", ""),
+            "webhook_id": os.getenv("PAYPAL_WEBHOOK_ID", ""),
+            "webhook_event": event,
+        }
+        response = self._raw_request("POST", "/v1/notifications/verify-webhook-signature",
+                                     body=body, bearer=self._auth_token())
+        if response.status != 200:
+            return False
+        payload = json.loads(response.body.decode("utf-8") or "{}")
+        return payload.get("verification_status") == "SUCCESS"
+
     def get_invoice(self, invoice_id: str) -> dict[str, Any]:
         response = self._raw_request(
             "GET", f"/v2/invoicing/invoices/{invoice_id}", bearer=self._auth_token()

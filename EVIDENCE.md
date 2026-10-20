@@ -155,3 +155,23 @@ generowany od zera.
   przejścia stanów, ale nie jest sandboxem PayPal. Integracja live wymaga
   osobnego przebiegu z kluczami sandbox i nie jest tu udowodniona.
 - Czas testów zmierzony na tym hoście (0.88 s), nie jest SLO.
+
+## Warstwa AI i webhook (2026-10-20)
+- `invoicepilot/ai.py`: ekstrakcja zlecenia przez LLM (OpenAI-compatible, env `PAYPAL_AI_BASE_URL`,
+  `PAYPAL_AI_API_KEY`, `PAYPAL_AI_MODEL`); bez klucza deterministyczny ekstraktor regułowy.
+  Tryb jest zawsze jawny w wyjściu (`ai: LLM` albo `ai: RULE-BASED`).
+- `invoicepilot/webhook.py` + `PayPalClient.verify_webhook_signature`: weryfikacja przez
+  `/v1/notifications/verify-webhook-signature`; offline akceptuje wyłącznie
+  `paypal-transmission-sig: offline-valid`. Zdarzenie `INVOICING.INVOICE.PAID` zmienia status.
+
+```
+$ python3 -m pytest -q
+44 passed in 0.93s
+```
+
+```
+$ python3 -m invoicepilot --offline --store /tmp/ppstate2 webhook --file /tmp/wb.json --headers /tmp/wbh.json
+{"verified": true, "event_type": "INVOICING.INVOICE.PAID", "invoice_id": "INV2-AEA10AF3D827", "status": "PAID", "applied": true}
+```
+
+Sandbox PayPal nie był wywołany — brak `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET`.
