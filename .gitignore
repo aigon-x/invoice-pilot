@@ -5,3 +5,4 @@ state/
 demo-state/
 demo-order.txt
 *.egg-info/
+CRITIQUE.md
