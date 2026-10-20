@@ -8,11 +8,12 @@ deterministic mock transport as ``--offline``, and its state lives under
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -38,6 +39,7 @@ class InvoiceRequest(BaseModel):
 
 
 class WebhookRequest(BaseModel):
+    transmission_id: str | None = None
     invoice_id: str | None = None
     event_type: str = "INVOICING.INVOICE.PAID"
 
@@ -145,21 +147,27 @@ def create_invoice(payload: InvoiceRequest) -> dict[str, Any]:
 
 
 @app.post("/api/webhook")
-def webhook(payload: WebhookRequest) -> dict[str, Any]:
-    """Simulate a PayPal event with the explicit offline test signature."""
+def webhook(payload: WebhookRequest,
+            x_simulate_payment: str | None = Header(default=None)) -> dict[str, Any]:
+    """Simulate a PayPal event. Requires an explicit header: payment simulation is not ambient."""
+    if x_simulate_payment != "enabled":
+        raise HTTPException(status_code=403,
+                            detail={"error": "payment simulation disabled; send X-Simulate-Payment: enabled"})
     store = get_store()
     record = _find_record(store, payload.invoice_id)
     if record is None:
         raise HTTPException(status_code=404, detail={"error": "unknown invoice"})
     invoice_id = str(record.get("id") or record.get("invoice_id") or "")
     event = {"event_type": payload.event_type, "resource": {"id": invoice_id}}
-    result = process_event(event, OFFLINE_SIGNATURE, get_client(store), store)
+    headers = dict(OFFLINE_SIGNATURE)
+    headers["paypal-transmission-id"] = payload.transmission_id or str(uuid.uuid4())
+    result = process_event(event, headers, get_client(store), store)
     if not result.get("verified"):
         raise HTTPException(status_code=400, detail={"error": "webhook signature not accepted"})
     if not result.get("applied"):
         raise HTTPException(
-            status_code=400,
-            detail={"error": f"event {payload.event_type} does not change status"},
+            status_code=409,
+            detail={"error": result.get("reason") or f"event {payload.event_type} does not change status"},
         )
     return {
         "id": invoice_id,

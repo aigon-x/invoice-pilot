@@ -61,7 +61,8 @@ def test_invoice_creation_returns_sent_invoice(client):
 
 def test_webhook_moves_invoice_to_paid(client):
     created = _create(client)
-    response = client.post("/api/webhook", json={"invoice_id": created["id"]})
+    response = client.post("/api/webhook", json={"invoice_id": created["id"]},
+                             headers={"X-Simulate-Payment": "enabled"})
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["status"] == "PAID"
@@ -73,7 +74,7 @@ def test_webhook_moves_invoice_to_paid(client):
 def test_webhook_without_id_targets_latest_invoice(client):
     _create(client)
     second = _create(client, ORDER.replace("Acme", "Beta"))
-    response = client.post("/api/webhook", json={})
+    response = client.post("/api/webhook", json={}, headers={"X-Simulate-Payment": "enabled"})
     assert response.status_code == 200
     assert response.json()["id"] == second["id"]
     assert response.json()["status"] == "PAID"
@@ -89,5 +90,21 @@ def test_bad_order_text_returns_400(client):
 
 
 def test_webhook_rejects_unknown_invoice(client):
-    response = client.post("/api/webhook", json={"invoice_id": "INV2-NOPE"})
+    response = client.post("/api/webhook", json={"invoice_id": "INV2-NOPE"},
+                             headers={"X-Simulate-Payment": "enabled"})
     assert response.status_code == 404
+
+
+def test_webhook_requires_explicit_simulation_header(client):
+    created = _create(client)
+    response = client.post("/api/webhook", json={"invoice_id": created["id"]})
+    assert response.status_code == 403
+
+
+def test_webhook_replay_is_rejected(client):
+    created = _create(client)
+    payload = {"invoice_id": created["id"], "transmission_id": "t-1"}
+    first = client.post("/api/webhook", json=payload, headers={"X-Simulate-Payment": "enabled"})
+    second = client.post("/api/webhook", json=payload, headers={"X-Simulate-Payment": "enabled"})
+    assert first.status_code == 200
+    assert second.status_code == 409

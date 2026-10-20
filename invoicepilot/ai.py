@@ -22,6 +22,11 @@ SYSTEM_PROMPT = (
 )
 
 
+def _one_line(value: object) -> str:
+    """A model must not be able to inject grammar lines through a field value."""
+    return " ".join(str(value).split())
+
+
 @dataclass
 class Extraction:
     mode: str
@@ -79,11 +84,12 @@ class AiExtractor:
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             payload = json.loads(resp.read().decode())
         data = json.loads(payload["choices"][0]["message"]["content"])
-        items = [{"qty": float(i["qty"]), "description": str(i["description"]),
+        items = [{"qty": float(i["qty"]), "description": _one_line(i["description"]),
                   "unit_price": float(i["unit_price"])} for i in data.get("items", [])]
         if not items:
             raise ValueError("model returned no line items")
-        return Extraction(mode="LLM", buyer=data.get("buyer"), email=data.get("email"),
+        return Extraction(mode="LLM", buyer=_one_line(data.get("buyer") or "") or None,
+                          email=_one_line(data.get("email") or "") or None,
                           currency=data.get("currency"), items=items, notes=data.get("notes"))
 
     @staticmethod
