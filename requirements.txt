@@ -1,0 +1,5 @@
+# Runtime: Python 3.11+ standard library only (urllib, json, decimal, unittest).
+# No third-party runtime dependencies.
+#
+# Development / tests:
+pytest>=8
