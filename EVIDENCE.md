@@ -240,3 +240,12 @@ połączenia zewnętrznego.
 Ograniczenia: brak autoryzacji i wielodostępności (demo), stan lokalny
 (JSON), brak SSE/websocketów — status zmienia odpowiedź HTTP, webhook jest
 symulowany z jawnym nagłówkiem `offline-valid`, a nie podpisany przez PayPal.
+
+## PayPal sandbox — przebieg live (2026-10-20)
+Poświadczenia sandboxa w Vaulcie (`secret/monai/paypal`) i w env MONAI (600).
+```
+oauth: 200
+invoice rejected: 403 {"name":"NOT_AUTHORIZED","message":"Authorization failed due to insufficient permissions."}
+```
+Wniosek: klucze są poprawne (OAuth przechodzi), ale aplikacja nie ma włączonej funkcji
+Invoicing. Po włączeniu funkcji w panelu aplikacji: `python3 scripts/paypal_smoke.py` → oczekiwany 0.
