@@ -174,7 +174,7 @@ $ python3 -m invoicepilot --offline --store /tmp/ppstate2 webhook --file /tmp/wb
 {"verified": true, "event_type": "INVOICING.INVOICE.PAID", "invoice_id": "INV2-AEA10AF3D827", "status": "PAID", "applied": true}
 ```
 
-Sandbox PayPal nie był wywołany — brak `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET`.
+Sandbox PayPal został wywołany 2026-10-20: OAuth 200 i faktura `INV2-UGKV-2FPL-TRG5-UAZ3` (201).
 
 ## Warstwa webowa — UI/UX (2026-10-20)
 
