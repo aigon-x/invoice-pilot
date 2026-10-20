@@ -249,3 +249,12 @@ invoice rejected: 403 {"name":"NOT_AUTHORIZED","message":"Authorization failed d
 ```
 Wniosek: klucze są poprawne (OAuth przechodzi), ale aplikacja nie ma włączonej funkcji
 Invoicing. Po włączeniu funkcji w panelu aplikacji: `python3 scripts/paypal_smoke.py` → oczekiwany 0.
+
+## Live sandbox po włączeniu Invoicing (2026-10-20)
+```
+oauth: 200
+POST /v2/invoicing/invoices -> 201
+Location: https://api-m.sandbox.paypal.com:8443/v2/invoicing/invoices/INV2-UGKV-2FPL-TRG5-UAZ3
+Paypal-Debug-Id: ca4d95a979ed5
+```
+Faktura utworzona w sandboxie na prawdziwym API PayPal. Klucze: `secret/monai/paypal`.
