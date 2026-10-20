@@ -29,7 +29,7 @@ listener, no payment reconciliation beyond an on-demand status refresh.
 No installation, no dependencies (Python 3.11+ stdlib):
 
 ```bash
-cd project
+cd invoice-pilot
 python3 -m invoicepilot --offline invoice create --text "$(cat <<'EOF'
 Client: Acme Sp. z o.o. <billing@acme.example>
 Currency: EUR
