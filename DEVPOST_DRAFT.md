@@ -83,7 +83,7 @@ Python 3.12 · PayPal Invoicing API v2 (OAuth2 client_credentials, create/send/g
 · urllib (stdlib) · decimal · argparse · pytest · JSONL audit log
 
 ## Links
-- Repository: `<REPO_URL>` (public, MIT)
+- Repository: `https://github.com/aigon-x/invoice-pilot`
 - Demo video: `<VIDEO_URL>`
 - PayPal developer sandbox: <https://developer.paypal.com>
 
